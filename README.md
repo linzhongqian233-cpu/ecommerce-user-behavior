@@ -1,89 +1,103 @@
-# 电商用户行为分析与转化优化
+# 电商用户行为分析
 
-> **一句话结论**：（做完后回来填 —— 例：定位到「加购→购买」环节转化率仅 32%，低于行业均值，主因是加购后 48 小时内无任何触达；建议上线加购未支付提醒，预估月增 GMV 约 xx 万元。）
+> **一句话结论**：淘宝 1 亿条行为日志显示，浏览→加购转化率仅 **6.17%**，是全链路最大漏点；同时 **31.94% 的用户 9 天内人均 79 次行为却零购买**。两个证据共同指向「加购环节缺钩子」——建议把运营资源从催付转向提升加购率。
+
+![转化漏斗](reports/01_funnel_event_level.png)
 
 ---
 
-## 1. 背景与目标
+## 项目简介
 
-- **业务问题**：平台整体转化率下滑，需要定位是「流量质量」还是「转化链路」的问题。
-- **分析目标**：
-  1. 还原用户从浏览到下单的完整链路，量化每一环的流失
-  2. 找出转化率最低、且可干预的环节
-  3. 给出可执行的运营动作与预估收益
-- **成功标准**：结论能被业务方直接执行（谁、在什么时点、对哪批人、做什么）
+对 1 亿条电商行为日志做端到端分析：还原转化漏斗、量化 Cohort 留存、做 RFM 用户分层，并把数字翻译成可执行的运营动作。
 
-## 2. 数据说明
+**技术栈**：DuckDB（亿级数据秒级查询）· Python 3.12 / pandas / matplotlib · MySQL 8.0（方言验证）· Tableau Public（看板）
+
+**完整分析报告**：见 [`reports/01_findings.md`](reports/01_findings.md)
+
+## 数据
 
 | 项 | 内容 |
 |---|---|
-| 数据源 | 阿里天池 UserBehavior（约 1 亿条，2017-11-25 ～ 2017-12-03）|
-| 字段 | `user_id` 用户、`item_id` 商品、`category_id` 品类、`behavior` 行为、`timestamp` 时间戳 |
-| 行为类型 | `pv` 浏览 / `fav` 收藏 / `cart` 加购 / `buy` 购买 |
-| 已知局限 | 无金额字段（只能用行为量代替 GMV）、无渠道来源、仅 9 天 |
-| 替代练习库 | 本机 `school_db`（13.6 万行教务数据），先练方法再换正式数据 |
+| 来源 | 阿里天池 [淘宝用户购物行为数据集](https://tianchi.aliyun.com/dataset/649)（UserBehavior）|
+| 规模 | **100,150,807 行**，3.42 GB CSV → 632 MB Parquet |
+| 时间 | 2017-11-25 ~ 2017-12-03（9 天）|
+| 字段 | `user_id` / `item_id` / `category_id` / `behavior`（pv·fav·cart·buy）/ `ts` |
+| 数据质量 | MD5 校验通过；99.945% 时间戳有效，5.5 万行（0.055%）损坏已过滤 |
 
-## 3. 分析框架
+> 数据文件不入库（见 `.gitignore`），按 `reports/01_findings.md` 第六节复现。
 
-```
-流量 → 浏览 → 加购/收藏 → 下单购买
-       ↓        ↓           ↓
-     品类分布  流失环节    复购与留存
-```
+## 核心发现
 
-| 模块 | 回答什么问题 | 对应 SQL |
-|---|---|---|
-| 漏斗 | 哪一环流失最多 | `sql/01_funnel.sql` |
-| 留存 | 用户来了还会不会回来 | `sql/02_cohort_retention.sql` |
-| 分层 | 该优先运营哪批人 | `sql/03_rfm.sql` |
-| 归因 | 转化率异常是谁造成的 | `sql/04_anomaly.sql` |
+**1. 漏点在加购，不在催付**
 
-## 4. 核心发现
+事件级漏斗：浏览 8,966 万 → 加购 553 万（**6.17%**）→ 购买 202 万（**36.45%**），整体转化 **2.25%**。
+「加购→购买」有 36.45%，说明用户一旦加购，下单意愿很强——问题是**没人加购**。
 
-（做完后按「现象 → 原因 → 建议」写，每条不超过 3 行）
+**2. 32% 的人来了但没买**
 
-1. **现象**：
-2. **原因**：
-3. **建议**：
+315,587 人（31.94%）9 天内人均 **79 次**行为、零购买，是最大的转化机会池，对应动作是首单券 + 低门槛引流品。
 
-## 5. 交付物
+**3. 高价值用户正在沉睡**
 
-- [ ] `notebooks/01_eda.ipynb` 数据清洗与探索
-- [ ] `sql/` 四份可复用的分析 SQL
-- [ ] `dashboard/` Tableau Public 看板（公开链接贴这里：）
-- [ ] `reports/analysis.pdf` 2 页分析报告
+84,263 人（8.53%）人均行为 **237 次**（全场最活跃），但最近购买已在 **4.4 天**前。这批人流失的损失远大于普通用户，应优先触达。
 
-## 6. 目录结构
+![用户分层](reports/04_rfm_segments.png)
 
-```
-ecommerce-user-behavior/
-├── README.md
-├── requirements.txt
-├── sql/                 分析 SQL（含口径注释）
-├── notebooks/           Jupyter 探索
-├── dashboard/           看板文件 / 链接说明
-├── reports/             分析报告
-└── data/                原始数据（不入库，见 .gitignore）
-```
+**4. 留存稳定 81%，但不能当行业基准**
 
-## 7. 环境与运行
+窗口完整 cohort 的次日留存 **81.3%**。但样本本身是活跃用户，存在选择偏差（真实电商次日留存通常 20–40%），结论只能表述为「本样本内」。
 
-```powershell
-# 安装依赖
-py -m pip install -r requirements.txt
+![Cohort留存](reports/02_cohort_d1_retention.png)
 
-# 用 DuckDB 直接查 CSV（1 亿行不需要导入）
-py -c "import duckdb; duckdb.sql(\"SELECT behavior, COUNT(*) FROM 'data/UserBehavior.csv' GROUP BY 1\").show()"
-
-# 用 MySQL 查（先导入抽样数据）
-mysql -uroot -p -e "source sql/00_load_mysql.sql"
-```
-
-## 8. 口径定义（避免和业务方吵架）
+## 口径定义（避免和业务方吵架）
 
 | 指标 | 定义 | 注意点 |
 |---|---|---|
-| 活跃用户 | 当天有任意行为（pv/fav/cart/buy）的去重 `user_id` | 不按设备去重 |
-| 加购转化率 | 加购人数 / 浏览人数 | 分母是「人」不是「次」|
-| 复购率 | 30 天内下单 ≥2 次的人数 / 下单人数 | 首单当天二次下单也算 |
-| 留存 | 首购后第 N 天有任意行为 | 用 `DATEDIFF(行为日, 首购日)`，不是自然日 |
+| 事件级转化率 | 下一环节事件数 / 上一环节事件数 | 反映点击效率，行业常用 |
+| 人级转化率 | 去重用户数之比 | 9 天累计会放大到 68%，与事件级差 12 倍 |
+| 次日留存 | 首购后第 1 天有任意行为的用户 / cohort 规模 | 按 `DATEDIFF`，不是自然日 |
+| R（RFM） | 距最后一次**购买**的天数 | 初版用「任意行为」→ 全员为 0，已修正 |
+| M（RFM） | 购买次数 | 无金额字段，作价值代理指标 |
+
+## 已知局限
+
+| 局限 | 影响 |
+|---|---|
+| 仅有 9 天窗口 | 30 日留存、月度复购无法计算 |
+| 无 session_id | 无法做严格「同一访问内」的漏斗 |
+| 样本为活跃用户 | 留存偏高，不可作为行业基准 |
+| 无金额字段 | GMV / 客单价 / LTV 无法计算 |
+
+## 目录结构
+
+```
+ecommerce-user-behavior/
+├── sql/                      分析 SQL（含口径注释与踩坑说明）
+│   ├── 01_funnel.sql             转化漏斗
+│   ├── 02_cohort_retention.sql   Cohort 留存
+│   ├── 03_rfm.sql                RFM 分层
+│   └── 04_anomaly.sql            异常归因模板
+├── reports/                  图表与分析报告
+│   ├── 01_findings.md            完整分析报告（2 页）
+│   ├── 01_funnel_event_level.png
+│   ├── 02_cohort_d1_retention.png
+│   └── 04_rfm_segments.png
+├── notebooks/                Jupyter 探索
+├── dashboard/                Tableau 看板
+└── data/                     原始数据（gitignore）
+```
+
+## 环境
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+依赖：pandas 3.1 / numpy 2.5 / matplotlib 3.11 / duckdb 2.0 / sqlalchemy / pymysql / plotly
+
+## 踩过的坑
+
+1. **CSV 无表头**：DuckDB 直接读会把列名认成 `column0`，必须用 `columns={...}` 显式声明。
+2. **MySQL 8.0.21 崩溃**：`WITH x AS (...) SELECT ... FROM t CROSS JOIN (SELECT COUNT(*) FROM x)` 这类写法会触发优化器缺陷，导致 mysqld 直接退出。改成标量子查询即可。
+3. **窗口函数与聚合混写**：`GROUP BY` 与 `RANK() OVER (ORDER BY SUM(...))` 写在同层会导致结果错误，必须用 CTE 先聚合再开窗。
+4. **RFM 的 R 失效**：在短窗口高频样本上，用「任意行为」定义 R 会让所有人接近 0，需改为「距最后购买天数」。
