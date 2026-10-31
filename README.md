@@ -103,3 +103,5 @@ py -m pip install -r requirements.txt
 2. **MySQL 8.0.21 崩溃**：`WITH x AS (...) SELECT ... FROM t CROSS JOIN (SELECT COUNT(*) FROM x)` 这类写法会触发优化器缺陷，导致 mysqld 直接退出。改成标量子查询即可。
 3. **窗口函数与聚合混写**：`GROUP BY` 与 `RANK() OVER (ORDER BY SUM(...))` 写在同层会导致结果错误，必须用 CTE 先聚合再开窗。
 4. **RFM 的 R 失效**：在短窗口高频样本上，用「任意行为」定义 R 会让所有人接近 0，需改为「距最后购买天数」。
+5. **MySQL 不支持 `COUNT(*) FILTER (WHERE ...)`**：这是 PostgreSQL/DuckDB 语法，MySQL 下报 1064，需改用 `SUM(condition)` 或 `COUNT(CASE WHEN ... THEN 1 END)`。
+6. **性能差 4.5 倍**：同样三段查询，DuckDB 跑 **1 亿行全量 4.2 秒**，MySQL 8.0 跑 **998 万行（10%）18.9 秒**。RFM 那段窗口函数在 MySQL 上要 **214 秒**（CTE 物化 + 窗口排序），DuckDB 不到 5 秒。
