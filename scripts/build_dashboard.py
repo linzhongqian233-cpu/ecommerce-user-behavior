@@ -7,11 +7,12 @@
 import duckdb
 import json
 import os
+import sys
 
-P = "read_parquet('D:/datasets/processed/user_behavior.parquet')"
-LO, HI = 1511539200, 1512316799
-W = f"(SELECT * FROM {P} WHERE ts BETWEEN {LO} AND {HI})"
-OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dashboard")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import WINDOW as W, PROJECT_ROOT
+
+OUT_DIR = os.path.join(PROJECT_ROOT, "dashboard")
 
 
 def df(sql):
