@@ -1,13 +1,44 @@
 -- =============================================================
--- 01 转化漏斗
--- 口径：按「人」去重，不是按「次」。分母 = 上一环节的人数。
--- 两层写法：CTE 先出明细，外层再算比率（避免窗口函数与聚合混算）
+-- 01 转化漏斗  —— 【MySQL 版，打开即可运行】
+-- 库：ecommerce   表：user_behavior（998 万行，10% 用户抽样）
+--
+-- 说明：文件末尾注释块保留了 DuckDB / PostgreSQL 语法版本。
+--       两者差异：MySQL 不支持 COUNT(*) FILTER (WHERE ...)，
+--                 需改用 SUM(condition)；时间转换用 FROM_UNIXTIME。
 -- =============================================================
+USE ecommerce;
 
--- -------------------------------------------------------------
--- A. 正式版：UserBehavior（淘宝行为日志）
---    前提：已建表 user_behavior(user_id,item_id,category_id,behavior,ts)
--- -------------------------------------------------------------
+-- 1.1 事件级漏斗（推荐口径：反映点击效率）
+SELECT SUM(behavior = 'pv')   AS 浏览_pv,
+       SUM(behavior = 'cart') AS 加购_cart,
+       SUM(behavior = 'buy')  AS 购买_buy,
+       ROUND(SUM(behavior = 'cart') * 100.0 / SUM(behavior = 'pv'),   2) AS 浏览到加购率,
+       ROUND(SUM(behavior = 'buy')  * 100.0 / SUM(behavior = 'cart'), 2) AS 加购到购买率,
+       ROUND(SUM(behavior = 'buy')  * 100.0 / SUM(behavior = 'pv'),   2) AS 整体转化率
+FROM user_behavior;
+
+-- 1.2 人级漏斗（9 天去重：反映人群覆盖，数值会显著高于事件级）
+SELECT COUNT(DISTINCT CASE WHEN behavior = 'pv'   THEN user_id END) AS 浏览人数,
+       COUNT(DISTINCT CASE WHEN behavior = 'fav'  THEN user_id END) AS 收藏人数,
+       COUNT(DISTINCT CASE WHEN behavior = 'cart' THEN user_id END) AS 加购人数,
+       COUNT(DISTINCT CASE WHEN behavior = 'buy'  THEN user_id END) AS 购买人数
+FROM user_behavior;
+
+-- 1.3 漏斗分品类下钻：找转化最差的品类
+SELECT category_id AS 品类,
+       SUM(behavior = 'pv')   AS 浏览,
+       SUM(behavior = 'cart') AS 加购,
+       SUM(behavior = 'buy')  AS 购买,
+       ROUND(SUM(behavior = 'cart') * 100.0 / NULLIF(SUM(behavior = 'pv'), 0), 2) AS 浏览到加购率
+FROM user_behavior
+GROUP BY category_id
+HAVING SUM(behavior = 'pv') >= 1000
+ORDER BY 浏览到加购率 ASC
+LIMIT 10;
+
+-- =============================================================
+-- 附：DuckDB / PostgreSQL 语法版本（仅作对照，MySQL 下不可执行）
+-- =============================================================
 /*
 WITH stage AS (
     SELECT user_id,
@@ -16,76 +47,13 @@ WITH stage AS (
            MAX(behavior = 'cart') AS s_cart,
            MAX(behavior = 'buy')  AS s_buy
     FROM user_behavior
-    WHERE ts >= UNIX_TIMESTAMP('2017-11-25')
-      AND ts <  UNIX_TIMESTAMP('2017-12-04')
     GROUP BY user_id
 )
-SELECT COUNT(*)                                        AS 总用户数,
-       SUM(s_pv)                                       AS 浏览人数,
-       SUM(s_fav)                                      AS 收藏人数,
-       SUM(s_cart)                                     AS 加购人数,
-       SUM(s_buy)                                      AS 购买人数,
-       ROUND(SUM(s_cart) / SUM(s_pv) * 100, 2)         AS 浏览到加购率,
-       ROUND(SUM(s_fav)  / SUM(s_cart) * 100, 2)       AS 加购到收藏率,
-       ROUND(SUM(s_buy)  / SUM(s_cart) * 100, 2)       AS 加购到购买率,
-       ROUND(SUM(s_buy)  / SUM(s_pv) * 100, 2)         AS 整体转化率
+SELECT COUNT(*)                                    AS 总用户数,
+       SUM(s_pv)                                   AS 浏览人数,
+       SUM(s_cart)                                 AS 加购人数,
+       SUM(s_buy)                                  AS 购买人数,
+       ROUND(SUM(s_cart) / SUM(s_pv) * 100, 2)     AS 浏览到加购率,
+       ROUND(SUM(s_buy)  / SUM(s_cart) * 100, 2)   AS 加购到购买率
 FROM stage;
 */
-
--- 分品类看漏斗（找转化率最差的品类）
-/*
-SELECT category_id AS 品类,
-       COUNT(*)                                              AS 总用户,
-       ROUND(SUM(s_buy) / SUM(s_pv) * 100, 2)                AS 浏览到购买率,
-       ROUND(SUM(s_cart) / SUM(s_pv) * 100, 2)               AS 浏览到加购率,
-       ROUND(SUM(s_buy) / NULLIF(SUM(s_cart), 0) * 100, 2)   AS 加购到购买率
-FROM (
-    SELECT user_id, category_id,
-           MAX(behavior = 'pv')   AS s_pv,
-           MAX(behavior = 'cart') AS s_cart,
-           MAX(behavior = 'buy')  AS s_buy
-    FROM user_behavior
-    GROUP BY user_id, category_id
-) t
-GROUP BY category_id
-HAVING COUNT(*) >= 50
-ORDER BY 浏览到购买率 ASC
-LIMIT 20;
-*/
-
--- -------------------------------------------------------------
--- B. 练手版：school_db（现在就能跑）
---    等价漏斗：选课 → 出成绩 → 及格 → 优秀
--- -------------------------------------------------------------
-USE school_db;
-
--- B1. 整体四层漏斗
-SELECT COUNT(*)                              AS 选课人次,
-       SUM(score IS NOT NULL)                AS 出分人次,
-       SUM(score >= 60)                      AS 及格人次,
-       SUM(score >= 90)                      AS 优秀人次,
-       ROUND(SUM(score IS NOT NULL) / COUNT(*) * 100, 2)  AS 出分率,
-       ROUND(SUM(score >= 60) / COUNT(*) * 100, 2)        AS 及格率,
-       ROUND(SUM(score >= 90) / COUNT(*) * 100, 2)        AS 优秀率
-FROM enrollment;
-
--- B2. 分维度下钻：哪个院系的及格率最低？
-SELECT d.dept_name AS 院系,
-       COUNT(*)                                          AS 选课人次,
-       ROUND(SUM(e.score >= 60) / COUNT(*) * 100, 2)     AS 及格率,
-       ROUND(SUM(e.score >= 90) / COUNT(*) * 100, 2)     AS 优秀率,
-       ROUND(AVG(CASE WHEN e.score IS NOT NULL THEN e.score END), 2) AS 平均分
-FROM enrollment e
-JOIN course co ON e.course_id = co.course_id
-JOIN dept   d  ON co.dept_id  = d.dept_id
-GROUP BY d.dept_name
-ORDER BY 及格率 ASC;
-
--- B3. 漏斗按课程类型拆（必修 vs 选修 vs 实践）
-SELECT co.course_type AS 课程类型,
-       COUNT(*)                                          AS 选课人次,
-       ROUND(SUM(e.score >= 60) / COUNT(*) * 100, 2)     AS 及格率
-FROM enrollment e
-JOIN course co ON e.course_id = co.course_id
-GROUP BY co.course_type
-ORDER BY 及格率 DESC;
