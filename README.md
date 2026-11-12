@@ -74,28 +74,47 @@
 
 ```
 ecommerce-user-behavior/
-├── sql/                      分析 SQL（含口径注释与踩坑说明）
+├── scripts/                  可复现脚本（配置集中在 common.py）
+│   ├── common.py                 路径与时间窗配置（支持环境变量覆盖）
+│   ├── to_parquet.py             CSV → Parquet（3.42 GB → 632 MB）
+│   ├── run_analysis.py           漏斗 / 留存 / RFM 全流程
+│   ├── build_dashboard.py        生成 ECharts 看板
+│   └── run_all_sql.ps1           命令行批量跑 SQL
+├── sql/                      分析 SQL（MySQL 语法，含方言注释）
+│   ├── 00_all_in_one.sql         一键执行全部（12 条语句）
 │   ├── 01_funnel.sql             转化漏斗
 │   ├── 02_cohort_retention.sql   Cohort 留存
 │   ├── 03_rfm.sql                RFM 分层
-│   └── 04_anomaly.sql            异常归因模板
+│   └── 04_anomaly.sql            异常归因
+├── docs/
+│   ├── interview_pitch.md        3 分钟口述稿 + 8 个高频追问
+│   └── reproducibility.md        复现指南与验证记录
 ├── reports/                  图表与分析报告
-│   ├── 01_findings.md            完整分析报告（2 页）
-│   ├── 01_funnel_event_level.png
-│   ├── 02_cohort_d1_retention.png
-│   └── 04_rfm_segments.png
-├── notebooks/                Jupyter 探索
-├── dashboard/                Tableau 看板
+│   ├── 01_findings.md            完整分析报告
+│   └── *.png                     漏斗 / 留存 / RFM 图
+├── dashboard/                ECharts 看板（index.html）
 └── data/                     原始数据（gitignore）
 ```
 
-## 环境
+## 环境与复现
 
 ```powershell
+# 1) 安装依赖
 py -m pip install -r requirements.txt
+
+# 2) 指定数据路径（数据需自行从天池下载，见 docs/reproducibility.md）
+$env:UB_CSV     = "D:/datasets/raw/UserBehavior.csv"
+$env:UB_PARQUET = "D:/datasets/processed/user_behavior.parquet"
+
+# 3) 三步跑通
+py scripts/to_parquet.py       # 3.42 GB → 632 MB，约 7 秒
+py scripts/run_analysis.py     # 漏斗 / 留存 / RFM，输出图表
+py scripts/build_dashboard.py  # 重建看板
 ```
 
-依赖：pandas 3.1 / numpy 2.5 / matplotlib 3.11 / duckdb 2.0 / sqlalchemy / pymysql / plotly
+依赖：pandas 3.1 / numpy 2.5 / matplotlib 3.11 / duckdb 2.0 / sqlalchemy / pymysql
+
+预期输出与校验数字见 [`docs/reproducibility.md`](docs/reproducibility.md)，面试讲法见 [`docs/interview_pitch.md`](docs/interview_pitch.md)。
 
 ## 踩过的坑
 
