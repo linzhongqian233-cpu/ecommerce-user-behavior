@@ -87,7 +87,6 @@ ecommerce-user-behavior/
 │   ├── 03_rfm.sql                RFM 分层
 │   └── 04_anomaly.sql            异常归因
 ├── docs/
-│   ├── interview_pitch.md        3 分钟口述稿 + 8 个高频追问
 │   └── reproducibility.md        复现指南与验证记录
 ├── reports/                  图表与分析报告
 │   ├── 01_findings.md            完整分析报告
@@ -114,7 +113,7 @@ py scripts/build_dashboard.py  # 重建看板
 
 依赖：pandas 3.1 / numpy 2.5 / matplotlib 3.11 / duckdb 2.0 / sqlalchemy / pymysql
 
-预期输出与校验数字见 [`docs/reproducibility.md`](docs/reproducibility.md)，面试讲法见 [`docs/interview_pitch.md`](docs/interview_pitch.md)。
+预期输出与校验数字见 [`docs/reproducibility.md`](docs/reproducibility.md)。
 
 ## 踩过的坑
 
