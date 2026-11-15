@@ -20,3 +20,6 @@ venv/
 reports/*.pdf
 !reports/.gitkeep
 dashboard/*.twbx
+
+# 本地仓库备份，绝不入库
+.git.bak-*

@@ -35,6 +35,18 @@ SELECT COUNT(DISTINCT CASE WHEN behavior='pv'   THEN user_id END) AS pv,
 FROM {W}
 """).iloc[0]
 
+# 各品类漏斗（取浏览量 Top 8 的品类，供看板筛选器使用）
+cat_funnel = df(f"""
+SELECT category_id,
+       COUNT(*) FILTER (WHERE behavior='pv')   AS pv,
+       COUNT(*) FILTER (WHERE behavior='cart') AS cart,
+       COUNT(*) FILTER (WHERE behavior='buy')  AS buy
+FROM {W}
+GROUP BY category_id
+ORDER BY pv DESC
+LIMIT 8
+""")
+
 # ---------- 2. 每日趋势 ----------
 daily = df(f"""
 SELECT CAST(to_timestamp(ts) AS DATE) AS d,
@@ -100,6 +112,12 @@ data = {
     "funnel_person": {
         "stages": ["浏览", "加购", "购买"],
         "values": [int(f_pu.pv), int(f_pu.cart), int(f_pu.buy)],
+    },
+    "funnel_cat": {
+        "cats": [str(int(x)) for x in cat_funnel["category_id"]],
+        "pv":   [int(x) for x in cat_funnel["pv"]],
+        "cart": [int(x) for x in cat_funnel["cart"]],
+        "buy":  [int(x) for x in cat_funnel["buy"]],
     },
     "daily": {
         "dates": [str(x) for x in daily["d"]],
@@ -167,7 +185,10 @@ TEMPLATE = """<!DOCTYPE html>
   <div class="grid">
     <div class="card">
       <h2>转化漏斗（事件级）</h2>
-      <p class="desc">按行为条数统计。浏览→加购 6.17% 是全链路最大漏点；加购→购买 36.45%，说明加购后下单意愿强。</p>
+      <p class="desc">按行为条数统计。浏览→加购 6.17% 是全链路最大漏点；加购→购买 36.45%，说明加购后下单意愿强。切换品类可对比不同类目的转化差异。</p>
+      <select id="catSel" style="margin:2px 0 6px;padding:5px 8px;border:1px solid #d0d7de;border-radius:6px;background:#fff;color:#1f2328;font-size:13px;min-width:180px;">
+        <option value="all">全部品类</option>
+      </select>
       <div class="chart" id="funnel"></div>
     </div>
     <div class="card">
@@ -214,22 +235,45 @@ document.getElementById('kpis').innerHTML = kpis.map(k =>
   `<div class="kpi"><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="hint">${k.hint}</div></div>`
 ).join('');
 
-// 漏斗
+// 漏斗（支持按品类筛选）
 const c1 = echarts.init(document.getElementById('funnel'));
-c1.setOption({
-  tooltip:{ trigger:'item', formatter:p=>`${p.name}<br/>${p.value.toLocaleString()}<br/>占比 ${p.data.pct}` },
-  series:[{
-    type:'funnel', left:'12%', width:'72%', top:20, bottom:20, minSize:'28%',
-    sort:'descending', gap:4,
-    label:{ show:true, position:'inside', formatter:p=>`${p.name}\\n${p.data.pct}`, color:'#fff', fontSize:12 },
-    itemStyle:{ borderWidth:0 },
-    data: D.funnel_event.stages.map((s,i)=>({
-      name:s, value: D.funnel_event.values[i],
-      pct: i===0 ? '100%' : (D.funnel_event.values[i]/D.funnel_event.values[0]*100).toFixed(2)+'%'
-    })),
-    color:['#4C78A8','#F58518','#54A24B'],
-  }]
+
+function funnelData(key){
+  if (key === 'all') return { stages: D.funnel_event.stages, values: D.funnel_event.values };
+  const i = D.funnel_cat.cats.indexOf(key);
+  return {
+    stages: ['浏览 pv', '加购 cart', '购买 buy'],
+    values: [D.funnel_cat.pv[i], D.funnel_cat.cart[i], D.funnel_cat.buy[i]]
+  };
+}
+
+function renderFunnel(key){
+  const d = funnelData(key);
+  c1.setOption({
+    tooltip:{ trigger:'item', formatter:p=>`${p.name}<br/>${p.value.toLocaleString()}<br/>占比 ${p.data.pct}` },
+    series:[{
+      type:'funnel', left:'12%', width:'72%', top:20, bottom:20, minSize:'28%',
+      sort:'descending', gap:4,
+      label:{ show:true, position:'inside', formatter:p=>`${p.name}\\n${p.data.pct}`, color:'#fff', fontSize:12 },
+      itemStyle:{ borderWidth:0 },
+      data: d.stages.map((s,i)=>({
+        name:s, value: d.values[i],
+        pct: i===0 ? '100%' : (d.values[i]/d.values[0]*100).toFixed(2)+'%'
+      })),
+      color:['#4C78A8','#F58518','#54A24B'],
+    }]
+  }, true);
+}
+
+// 填充品类下拉框并绑定切换
+const catSel = document.getElementById('catSel');
+D.funnel_cat.cats.forEach(c=>{
+  const o = document.createElement('option');
+  o.value = c; o.textContent = '品类 ' + c;
+  catSel.appendChild(o);
 });
+catSel.addEventListener('change', e=>renderFunnel(e.target.value));
+renderFunnel('all');
 
 // 每日趋势
 const c2 = echarts.init(document.getElementById('daily'));
